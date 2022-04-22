@@ -33,5 +33,6 @@ def getArgs(argv=None):
     parser.add_argument('--types_file', type=str, default='mnist_train_types2.csv', help='File with the types of the data')
     parser.add_argument('--miss_file', type=str, default='Missing_test.csv', help='File with the missing indexes mask')
     parser.add_argument('--true_miss_file', type=str, help='File with the missing indexes when there are NaN in the data')
-    
+    parser.add_argument('--sample-column', type=int, default=-1, help='sample instead of using mode. specify which column to collect samples on (zero-based idx)')
+
     return parser.parse_args(argv)

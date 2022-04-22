@@ -8,7 +8,7 @@ Created on Tue Jan 23 15:49:42 2018
 
 import sys
 import argparse
-import tensorflow as tf
+# import tensorflow as tf
 import graph_new
 import parser_arguments
 import time
@@ -17,12 +17,54 @@ import numpy as np
 import read_functions
 import os
 import csv
-
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 
 def print_loss(epoch, start_time, avg_loss, avg_test_loglik, avg_KL_s, avg_KL_z):
     print("Epoch: [%2d]  time: %4.4f, train_loglik: %.8f, KL_z: %.8f, KL_s: %.8f, ELBO: %.8f, Test_loglik: %.8f"
           % (epoch, time.time() - start_time, avg_loss, avg_KL_z, avg_KL_s, avg_loss-avg_KL_z-avg_KL_s, avg_test_loglik))
+
+#
+def log_array( description, arr_full, lines, var_idx = 1 ):
+    print( "log_array: ", description )
+    arr = arr_full[var_idx]
+    for idx in range(0,lines):
+        first_non_zero = -1
+        for jdx in range(0,len(arr[idx])):
+            if first_non_zero == -1 and arr[idx][jdx] != 0:
+                first_non_zero = jdx
+                break
+        print( idx, " -> ", first_non_zero )
+
+
+#
+def get_category( cat_array ):
+    first_non_zero = -1
+    for jdx in range( 0, len(cat_array) ):
+        if first_non_zero == -1 and cat_array[jdx] != 0:
+            first_non_zero = jdx
+            break
+    return first_non_zero
+
+
+# get the max category sampled over each column
+def determine_col_samples( column_samples, num_cats_4_sample ):
+    ret = []
+    for idx in range(0,len(column_samples)):
+        # get the samples for a particular row
+        row_samples = column_samples[idx]
+        tab_array = np.zeros( num_cats_4_sample )
+        # accumulate
+        for jdx in range(0,len(row_samples)):
+            elem = row_samples[jdx]
+            tab_array[ elem ] = tab_array[elem] + 1
+        # emit max value in array for this row
+        row_out = []
+        row_out.append( tab_array.argmax() )
+        ret.append( row_out )
+    return ret
+
 
 #Get arguments for parser
 args = parser_arguments.getArgs(sys.argv[1:])
@@ -266,7 +308,8 @@ with tf.Session(graph=sess_HVAE) as session:
         
     #Test phase
     else:
-        
+        print( "Testing HVAE ..." )
+
         start_time = time.time()
         # Training cycle
         
@@ -277,7 +320,8 @@ with tf.Session(graph=sess_HVAE) as session:
         error_test_mode_global = []
         error_imputed_global = []
         est_data_transformed_total = []
-        
+        column_samples = []
+
         #Only one epoch needed, since we are doing mode imputation
         for epoch in range(args.epochs):
             avg_loss = 0.
@@ -299,10 +343,16 @@ with tf.Session(graph=sess_HVAE) as session:
             #Randomize the data in the mini-batches
     #        random_perm = np.random.permutation(range(np.shape(data)[0]))
             random_perm = range(np.shape(train_data)[0])
+            print("random_perm: ", random_perm )
+
             train_data_aux = train_data[random_perm,:]
             miss_mask_aux = miss_mask[random_perm,:]
             true_miss_mask_aux = true_miss_mask[random_perm,:]
-            
+
+            print( "miss_mask_aux: ", miss_mask_aux )
+            print( "num batches: ", n_batches )
+            # print( "types dict: ", types_dict )
+
             for i in range(n_batches):      
                 
                 #Create train minibatch
@@ -328,19 +378,61 @@ with tf.Session(graph=sess_HVAE) as session:
                 samples_test,log_p_x_test,log_p_x_missing_test,test_params  = session.run([tf_nodes['samples_test'],tf_nodes['log_p_x_test'],tf_nodes['log_p_x_missing_test'],tf_nodes['test_params']],
                                                              feed_dict=feedDict)
                 
-                
+                # karl: log samples for inspection
+                # log_array( "samples", samples['x'], 25 )
+                # log_array( "samples test", samples_test['x'], 25 )
+                # end karl
+
                 samples_list.append(samples_test)
                 p_params_list.append(test_params)
     #                        p_params_list.append(p_params)
                 q_params_list.append(q_params)
                 log_p_x_total.append(log_p_x_test)
                 log_p_x_missing_total.append(log_p_x_missing_test)
-                
+
+                #
+
+
+                if args.sample_column != -1 :
+                    for sample_iter in range(0, 50):
+                        samples_test,log_p_x_test,log_p_x_missing_test,test_params = session.run( [tf_nodes['samples_test'],
+                                                                                        tf_nodes['log_p_x_test'],
+                                                                                        tf_nodes['log_p_x_missing_test'],
+                                                                                        tf_nodes['test_params']],
+                                                                                        feed_dict=feedDict )
+
+                        # data_len = len(samples_test['z'])
+                        x_col_samples = samples_test['x'][args.sample_column]
+                        data_len = len(x_col_samples)
+                        if len(column_samples) == 0:
+                            # first time, seed array with arrays
+                            for sidx in range(0,data_len):
+                                new_list = []
+                                new_list.append( get_category( x_col_samples[sidx] ) )
+                                column_samples.append( new_list )
+                        else:
+                            for sidx in range(0,data_len):
+                                row_list = column_samples[sidx]
+                                row_list.append( get_category( x_col_samples[sidx] ) )
+
+
     #            # Compute average loss
     #            avg_loss += np.mean(loss)
     #            avg_KL_s += np.mean(KL_s)
     #            avg_KL_z += np.mean(KL_z)
-                
+
+            #
+            print( "samples_list: len=", len(samples_list) )
+            samples_map = samples_list[0]
+            for k in samples_map.keys() :
+                sample_data = samples_map[k]
+                a_row = sample_data[0]
+                print( "key: ", k, ", len=", len(sample_data), ", width=", len(a_row) )
+                # print( sample_data )
+                print( "--------------------------------------------------------" )
+
+
+
             #Separate the samples from the batch list
             s_aux, z_aux, y_total, est_data = read_functions.samples_concatenation(samples_list)
             
@@ -385,7 +477,11 @@ with tf.Session(graph=sess_HVAE) as session:
             #Plot evolution of test loglik
             loglik_per_variable = np.sum(np.concatenate(log_p_x_total,1),1)/np.sum(miss_mask,0)
             loglik_per_variable_missing = np.sum(log_p_x_missing_total,0)/np.sum(1.0-miss_mask,0)
-            
+
+            print( "denom (per var missing): ", np.sum(1.0-miss_mask,0) )
+            print( "loglik_per_variable: ",  loglik_per_variable )
+            print( "loglik_per_variable_missing: ", loglik_per_variable_missing )
+
             loglik_epoch.append(loglik_per_variable)
             testloglik_epoch.append(loglik_per_variable_missing)
             
@@ -404,13 +500,15 @@ with tf.Session(graph=sess_HVAE) as session:
         data_reconstruction = train_data_transformed * miss_mask_aux[:n_batches*args.batch_size,:] + \
                                 np.round(loglik_mode,3) * (1 - miss_mask_aux[:n_batches*args.batch_size,:])
         
-        
+        print( "data_reconstruction: loglik_mode: len=", len(loglik_mode), "\n",
+               loglik_mode )
+
 #        data_reconstruction = -1 * miss_mask_aux[:n_batches*args.batch_size,:] + \
 #                                np.round(loglik_mode,3) * (1 - miss_mask_aux[:n_batches*args.batch_size,:])
                                 
         train_data_transformed = train_data_transformed[np.argsort(random_perm)]
         data_reconstruction = data_reconstruction[np.argsort(random_perm)]
-        
+
         if not os.path.exists('./Results/' + args.save_file):
             os.makedirs('./Results/' + args.save_file)
             
@@ -450,4 +548,12 @@ with tf.Session(graph=sess_HVAE) as session:
         with open('Results_test_csv/' + args.save_file + '/' + args.save_file + '_clusters.csv', "w") as f:
             writer = csv.writer(f)
             writer.writerows([[len(cluster)]])
- 
+
+        # karl begin
+        if args.sample_column != -1 :
+            num_cats_4_sample = int(types_dict[ args.sample_column ][ 'dim' ])
+            column_samples_final = determine_col_samples( column_samples, num_cats_4_sample )
+            with open('Results/' + args.save_file + '/' + args.save_file + '_column_samples.csv', "w") as f:
+                writer = csv.writer(f)
+                writer.writerows( column_samples_final )
+        # karl end

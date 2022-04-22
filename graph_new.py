@@ -8,9 +8,13 @@ Graph definition for all models
 @author: anazabal, olmosUC3M, ivaleraM
 """
 
-import tensorflow as tf
+#import tensorflow as tf
 import numpy as np
 import VAE_functions
+import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
+
+
 
 def HVAE_graph(model_name, types_file, batch_size, learning_rate=1e-3, z_dim=2, y_dim=1, s_dim=2, y_dim_partition=[]):
     

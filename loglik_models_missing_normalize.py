@@ -15,8 +15,12 @@ The variable reuse indicates the mode of this functions
 
 """
 
-import tensorflow as tf
+#import tensorflow as tf
+import tensorflow.compat.v1 as tf
+# tf.disable_v2_behavior()
 import numpy as np
+import tensorflow_probability as tfp
+
 
 def loglik_real(batch_data,list_type,theta,normalization_params,tau2,kernel_initializer,name,reuse):
     
@@ -46,7 +50,7 @@ def loglik_real(batch_data,list_type,theta,normalization_params,tau2,kernel_init
     output['log_p_x'] = tf.multiply(log_p_x, missing_mask)
     output['log_p_x_missing'] = tf.multiply(log_p_x, 1.0-missing_mask)
     output['params'] = [est_mean, est_var]
-    output['samples'] = tf.contrib.distributions.Normal(est_mean,tf.sqrt(est_var)).sample()
+    output['samples'] = tfp.distributions.Normal(est_mean,tf.sqrt(est_var)).sample()
         
     return output
 
@@ -80,7 +84,7 @@ def loglik_pos(batch_data,list_type,theta,normalization_params,tau2,kernel_initi
     output['log_p_x'] = tf.multiply(log_p_x, missing_mask)
     output['log_p_x_missing'] = tf.multiply(log_p_x, 1.0-missing_mask)
     output['params'] = [est_mean, est_var]
-    output['samples'] = tf.clip_by_value(tf.exp(tf.contrib.distributions.Normal(est_mean,tf.sqrt(est_var)).sample()) - 1.0,0,1e20)
+    output['samples'] = tf.clip_by_value(tf.exp(tfp.distributions.Normal(est_mean,tf.sqrt(est_var)).sample()) - 1.0,0,1e20)
         
     return output
 
@@ -100,7 +104,7 @@ def loglik_cat(batch_data,list_type,theta,normalization_params,tau2,kernel_initi
     output['log_p_x'] = tf.multiply(log_p_x, missing_mask)
     output['log_p_x_missing'] = tf.multiply(log_p_x, 1.0-missing_mask)
     output['params'] = log_pi
-    output['samples'] = tf.one_hot(tf.contrib.distributions.Categorical(probs=tf.nn.softmax(log_pi)).sample(),depth=int(list_type['dim']))
+    output['samples'] = tf.one_hot(tfp.distributions.Categorical(probs=tf.nn.softmax(log_pi)).sample(),depth=int(list_type['dim']))
     
     return output
     
@@ -132,7 +136,7 @@ def loglik_ordinal(batch_data,list_type,theta,normalization_params,tau2,kernel_i
     output['log_p_x'] = tf.multiply(log_p_x,missing_mask)
     output['log_p_x_missing'] = tf.multiply(log_p_x,1.0-missing_mask)
     output['params'] = mean_probs
-    output['samples'] = tf.sequence_mask(1+tf.contrib.distributions.Categorical(logits=tf.log(tf.clip_by_value(mean_probs,epsilon,1e20))).sample(), int(list_type['dim']),dtype=tf.float32)
+    output['samples'] = tf.sequence_mask(1 + tfp.distributions.Categorical(logits=tf.log(tf.clip_by_value(mean_probs,epsilon,1e20))).sample(), int(list_type['dim']),dtype=tf.float32)
     
     return output
     
@@ -153,6 +157,6 @@ def loglik_count(batch_data,list_type,theta,normalization_params,tau2,kernel_ini
     output['log_p_x'] = tf.multiply(log_p_x, missing_mask)
     output['log_p_x_missing'] = tf.multiply(log_p_x, 1.0-missing_mask)
     output['params'] = est_lambda
-    output['samples'] = tf.contrib.distributions.Poisson(est_lambda).sample()
+    output['samples'] = tfp.distributions.Poisson(est_lambda).sample()
         
     return output
